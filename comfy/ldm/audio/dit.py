@@ -1,6 +1,6 @@
 # code adapted from: https://github.com/Stability-AI/stable-audio-tools
 
-from comfy.ldm.modules.attention import optimized_attention
+from comfy.ldm.modules.attention import AttentionTensorContainer, ComfyAttention, optimized_attention
 import typing as tp
 
 import torch
@@ -285,6 +285,7 @@ class Attention(nn.Module):
         operations=None,
     ):
         super().__init__()
+        self.comfy_attention = ComfyAttention()
         self.dim = dim
         self.dim_heads = dim_heads
         self.causal = causal
@@ -425,19 +426,19 @@ class Attention(nn.Module):
         if n == 1 and causal:
             causal = False
 
-        if h != kv_h:
-            # Repeat interleave kv_heads to match q_heads
-            heads_per_kv_head = h // kv_h
-            k, v = map(lambda t: t.repeat_interleave(heads_per_kv_head, dim = 1), (k, v))
+        gqa_kwargs = {"enable_gqa": True} if h != kv_h else {}
 
         if self.differential:
             q, q_diff = q.unbind(dim=1)
             k, k_diff = k.unbind(dim=1)
-            out      = optimized_attention(q,      k,      v, h, skip_reshape=True, low_precision_attention=False, transformer_options=transformer_options)
-            out_diff = optimized_attention(q_diff, k_diff, v, h, skip_reshape=True, low_precision_attention=False, transformer_options=transformer_options)
+            q, k = AttentionTensorContainer(q), AttentionTensorContainer(k)
+            out      = optimized_attention(q,      k,      AttentionTensorContainer(v), h, skip_reshape=True, low_precision_attention=False, preferred_attention=self.comfy_attention, transformer_options=transformer_options, **gqa_kwargs)
+            q_diff, k_diff, v = AttentionTensorContainer(q_diff), AttentionTensorContainer(k_diff), AttentionTensorContainer(v)
+            out_diff = optimized_attention(q_diff, k_diff, v, h, skip_reshape=True, low_precision_attention=False, preferred_attention=self.comfy_attention, transformer_options=transformer_options, **gqa_kwargs)
             out = out - out_diff
         else:
-            out = optimized_attention(q, k, v, h, skip_reshape=True, low_precision_attention=False, transformer_options=transformer_options)
+            q, k, v = AttentionTensorContainer(q), AttentionTensorContainer(k), AttentionTensorContainer(v)
+            out = optimized_attention(q, k, v, h, skip_reshape=True, low_precision_attention=False, preferred_attention=self.comfy_attention, transformer_options=transformer_options, **gqa_kwargs)
 
         out = self.to_out(out)
 
