@@ -33,6 +33,10 @@ from comfy_execution.utils import get_executing_context
 from comfy_api import feature_flags
 from app.database.db import init_db, dependencies_available
 
+import os
+git_executable = r"C:\Program Files\Git\bin\git.exe"
+os.environ['GIT_PYTHON_GIT_EXECUTABLE'] = git_executable
+
 if __name__ == "__main__":
     #NOTE: These do not do anything on core ComfyUI, they are for custom nodes.
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
